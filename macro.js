@@ -185,39 +185,118 @@ async function importFromCompCon() {
     try {
         ui.notifications.info("Connecting to Comp/Con...");
 
-        // Charger les modules AWS
-        const possiblePaths = [
-            "/systems/lancer/index-5139827c.mjs",
-            "./systems/lancer/index-5139827c.mjs",
-            "systems/lancer/index-5139827c.mjs"
-        ];
-
+        // Charger les modules AWS dynamiquement
         let Auth, Storage, awsConfig;
 
-        for (const path of possiblePaths) {
-            try {
-                const authPath = path;
-                const storagePath = path.replace("index-5139827c.mjs", "index-66abcef7.mjs");
-                const configPath = path.replace("index-5139827c.mjs", "aws-exports-1e808d22.mjs");
-
-                const [authModule, storageModule, configModule] = await Promise.all([
-                    import(authPath),
-                    import(storagePath),
-                    import(configPath)
-                ]);
-
-                Auth = authModule.Auth;
-                Storage = storageModule.Storage;
-                awsConfig = configModule.default;
-
-                break;
-            } catch (e) {
-                continue;
-            }
+        // Trouver les fichiers AWS dans le système Lancer
+        const lancerPath = game.system.id === "lancer" ? "systems/lancer" : null;
+        if (!lancerPath) {
+            throw new Error("Lancer system not found");
         }
 
-        if (!Auth || !Storage || !awsConfig) {
-            throw new Error("Could not load AWS modules");
+        // Détecter automatiquement les fichiers AWS en parsant lancer.mjs
+        const tryImportModules = async (basePath) => {
+            try {
+                console.log("Auto-detecting AWS module files...");
+
+                // Étape 1: Fetch lancer.mjs pour trouver lancer-HASH.mjs
+                const lancerResponse = await fetch(`/${basePath}/lancer.mjs`);
+                if (!lancerResponse.ok) {
+                    throw new Error("Could not fetch lancer.mjs");
+                }
+
+                const lancerContent = await lancerResponse.text();
+
+                // Extraire le nom du fichier lancer-HASH.mjs
+                // Chercher: import "./lancer-XXXXX.mjs"
+                const lancerHashMatch = lancerContent.match(/import\s+["']\.\/lancer-([a-f0-9]+)\.mjs["']/);
+                if (!lancerHashMatch) {
+                    throw new Error("Could not find lancer-HASH.mjs reference in lancer.mjs");
+                }
+
+                const lancerHashFile = `lancer-${lancerHashMatch[1]}.mjs`;
+                console.log(`Found main file: ${lancerHashFile}`);
+
+                // Étape 2: Fetch lancer-HASH.mjs pour trouver les fichiers AWS
+                const lancerHashResponse = await fetch(`/${basePath}/${lancerHashFile}`);
+                if (!lancerHashResponse.ok) {
+                    throw new Error(`Could not fetch ${lancerHashFile}`);
+                }
+
+                const lancerHashContent = await lancerHashResponse.text();
+
+                // Parser pour extraire les noms de fichiers AWS
+                // Chercher: (await import("./aws-exports-XXXXX.mjs"))
+                // Chercher: { Auth } = await import("./index-XXXXX.mjs")
+                // Chercher: { Storage } = await import("./index-YYYYY.mjs")
+
+                const awsConfigMatch = lancerHashContent.match(/await import\(["']\.\/aws-exports-([a-f0-9]+)\.mjs["']\)/);
+                const authMatch = lancerHashContent.match(/\{\s*Auth\s*\}\s*=\s*await import\(["']\.\/index-([a-f0-9]+)\.mjs["']\)/);
+                const storageMatch = lancerHashContent.match(/\{\s*Storage\s*\}\s*=\s*await import\(["']\.\/index-([a-f0-9]+)\.mjs["']\)/);
+
+                if (!awsConfigMatch || !authMatch || !storageMatch) {
+                    throw new Error("Could not parse AWS module file names from lancer-HASH.mjs");
+                }
+
+                const configFile = `aws-exports-${awsConfigMatch[1]}.mjs`;
+                const authFile = `index-${authMatch[1]}.mjs`;
+                const storageFile = `index-${storageMatch[1]}.mjs`;
+
+                console.log(`Detected AWS files: ${authFile}, ${storageFile}, ${configFile}`);
+
+                // Étape 3: Importer les modules détectés
+                const [authModule, storageModule, configModule] = await Promise.all([
+                    import(`/${basePath}/${authFile}`),
+                    import(`/${basePath}/${storageFile}`),
+                    import(`/${basePath}/${configFile}`)
+                ]);
+
+                if (authModule.Auth && storageModule.Storage && configModule.default) {
+                    Auth = authModule.Auth;
+                    Storage = storageModule.Storage;
+                    awsConfig = configModule.default;
+                    console.log(`✓ Successfully auto-loaded AWS modules`);
+                    return true;
+                }
+
+                return false;
+            } catch (e) {
+                console.warn("Could not auto-detect AWS modules, trying fallback...", e);
+
+                // Fallback : essayer avec des hash connus
+                const possibleHashes = [
+                    { auth: "index-5139827c.mjs", storage: "index-66abcef7.mjs", config: "aws-exports-1e808d22.mjs" },
+                ];
+
+                for (const combo of possibleHashes) {
+                    try {
+                        const [authModule, storageModule, configModule] = await Promise.all([
+                            import(`/${basePath}/${combo.auth}`),
+                            import(`/${basePath}/${combo.storage}`),
+                            import(`/${basePath}/${combo.config}`)
+                        ]);
+
+                        Auth = authModule.Auth;
+                        Storage = storageModule.Storage;
+                        awsConfig = configModule.default;
+
+                        if (Auth && Storage && awsConfig) {
+                            console.log(`✓ Successfully loaded AWS modules using fallback`);
+                            return true;
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+
+                return false;
+            }
+        };
+
+        const loaded = await tryImportModules(lancerPath);
+
+        if (!loaded || !Auth || !Storage || !awsConfig) {
+            throw new Error("Could not load AWS modules. The Lancer system version may not be compatible. Please check that the required AWS module files exist in your Lancer system folder.");
         }
 
         // Configurer AWS
