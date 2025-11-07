@@ -1,29 +1,4 @@
-/**
- * NPC Import Macro for Lancer (Foundry VTT)
- * 
- * This macro allows you to import NPCs from:
- * - Local JSON files (exported from CompCon)
- * - Directly from your CompCon account (requires login)
- * 
- * Features:
- * - Import multiple NPCs at once
- * - Update existing NPCs without losing token customizations
- * - Automatically imports NPC classes, templates, and features
- * 
- * Usage:
- * 1. Run this macro
- * 2. Choose import method (JSON files or CompCon)
- * 3. Select NPCs to import
- * 4. Done!
- * 
- * Note: Custom tier NPCs default to Tier 1
- * 
- * @author Your Name
- * @version 1.0.0
- * @license MIT
- */
-
-async function ImportNPC() {
+export async function ImportNPC() {
     // Créer et afficher la dialog de sélection
     new NPCImportDialog().render(true);
 }
@@ -761,6 +736,7 @@ async function applyFeatureCustomizations(actor, npcData) {
 
         const updates = [];
         const tierOverrides = [];
+        const npcTierParsed = parseTier(npcData.tier); // Convertir le tier du NPC en nombre
 
         for (const ccItem of npcData.items) {
             // Trouver la feature dans l'acteur par son LID
@@ -789,8 +765,8 @@ async function applyFeatureCustomizations(actor, npcData) {
                 hasChanges = true;
             }
 
-            // Vérifier si un tier override est nécessaire
-            if (ccItem.tier !== undefined && ccItem.tier !== npcData.tier) {
+            // Vérifier si un tier override est nécessaire (comparer avec le tier parsé)
+            if (ccItem.tier !== undefined && ccItem.tier !== npcTierParsed) {
                 tierOverrides.push({
                     name: ccItem.flavorName || feature.name,
                     tier: ccItem.tier
@@ -1037,6 +1013,12 @@ async function importNPCFromCompCon(npcData, updateExisting = true, customTierMo
     // Appliquer les customisations des features (tier override, custom names, etc.)
     await applyFeatureCustomizations(actor, npcData);
 
+    // Reset des stats de l'acteur (HP au max, heat à 0)
+    await actor.update({
+        'system.hp.value': actor.system.hp.max,
+        'system.heat.value': 0
+    });
+
     // Afficher un résumé des features manquantes
     if (missingFeatures.length > 0) {
         ui.notifications.warn(`⚠ NPC "${npcData.name}": ${missingFeatures.length} feature(s) not found in compendiums`);
@@ -1076,8 +1058,19 @@ function parseTier(tier) {
     return 1;
 }
 
-// ============================================================================
-// EXECUTE MACRO
-// ============================================================================
+Hooks.on('renderActorDirectory', (_app, html) => {
+    if (game.system.id !== 'lancer') return;
 
-ImportNPC();
+    const headerActions = html.find('.header-actions.action-buttons');
+    if (headerActions.length === 0) return;
+
+    const importButton = $(`
+        <button class="import-npc-button" title="Import NPCs from Comp/Con or JSON files">
+            <i class="fas fa-file-import"></i> Import NPCs
+        </button>
+    `);
+    importButton.click(() => {
+        ImportNPC();
+    });
+    headerActions.append(importButton);
+});

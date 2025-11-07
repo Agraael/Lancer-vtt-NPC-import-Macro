@@ -1,0 +1,26 @@
+{
+  "id": "lancer-npc-import",
+  "title": "Lancer NPC Import",
+  "description": "Module to import Lancer NPCs into FoundryVTT",
+  "version": "1.0.0",
+  "compatibility": {
+    "minimum": "11",
+    "verified": "12"
+  },
+  "authors": [
+    {
+      "name": "MCESC"
+    }
+  ],
+  "esmodules": [
+    "scripts/lancer-npc-import.js"
+  ],
+  "systems": [
+    "lancer"
+  ],
+  "url": "",
+  "manifest": "https://github.com/Agraael/Lancer-vtt-NPC-import-Macro/releases/latest/download/module.json",
+  "download": "https://github.com/Agraael/Lancer-vtt-NPC-import-Macro/releases/download/1.0.0/module.zip",
+  "license": "",
+  "readme": "README.md"
+}
