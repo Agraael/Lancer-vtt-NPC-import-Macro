@@ -984,7 +984,7 @@ async function importNPCFromCompCon(npcData, updateExisting = true, customTierMo
         await actor.createEmbeddedDocuments('Item', classAndTemplates);
     }
 
-    await new Promise(resolve => setTimeout(resolve, 250));
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Si custom tier, appliquer les stats custom aux tiers de la classe
     if (isCustomTier && npcData.class) {
@@ -1019,9 +1019,6 @@ async function importNPCFromCompCon(npcData, updateExisting = true, customTierMo
     if (featuresToAdd.length > 0) {
         await actor.createEmbeddedDocuments('Item', featuresToAdd);
     }
-
-    // Attendre un peu pour que les features soient bien créées
-    await new Promise(resolve => setTimeout(resolve, 100));
 
     // Appliquer les customisations des features (tier override, custom names, etc.)
     await applyFeatureCustomizations(actor, npcData);
